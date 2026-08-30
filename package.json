@@ -1,0 +1,41 @@
+{
+  "name": "@ecosy/schedule",
+  "version": "0.1.0",
+  "description": "Cron scheduling with pluggable sources, coordination and reporting — no dependencies, runs anywhere Node does",
+  "main": "src/index.ts",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./source": {
+      "source": "./src/source/index.ts",
+      "types": "./dist/source/index.d.ts",
+      "default": "./src/source/index.ts"
+    },
+    "./hook": {
+      "source": "./src/hook/index.ts",
+      "types": "./dist/hook/index.d.ts",
+      "default": "./src/hook/index.ts"
+    }
+  },
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "yarn build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/material-atomic/ecosy-schedule.git"
+  },
+  "author": "material-atomic",
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^5.9.3"
+  }
+}
