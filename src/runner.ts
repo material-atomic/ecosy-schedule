@@ -45,9 +45,9 @@ async function runHandler(
 ): Promise<RunOutcome> {
   if (task.target.type !== "handler") return failure("unknown", "not a handler target");
 
-  const entry = registry.get(task.target.key);
+  const Entry = registry.get(task.target.key);
 
-  if (!entry) {
+  if (!Entry) {
     // Loud, not silent: a row that is enabled but points nowhere would
     // otherwise look like a task that simply never fires.
     await notFound?.(task.target.key, task);
@@ -55,7 +55,7 @@ async function runHandler(
   }
 
   try {
-    const result = await withDeadline(Promise.resolve(entry.run(context)), timeout);
+    const result = await withDeadline(Promise.resolve(new Entry().run(context)), timeout);
 
     if (result === TIMED_OUT) {
       return failure("timeout", `handler exceeded ${timeout}ms (still running — a function cannot be interrupted)`);

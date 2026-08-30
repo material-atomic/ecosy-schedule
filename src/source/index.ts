@@ -1,4 +1,4 @@
-import type { SourceAdapter, TaskDefinition, TaskParser, TaskTarget } from "../types";
+import type { ClassType, Promisable, SourceAdapter, TaskDefinition, TaskParser, TaskTarget } from "../types";
 
 /**
  * Built-in sources and the line format they produce.
@@ -6,6 +6,23 @@ import type { SourceAdapter, TaskDefinition, TaskParser, TaskTarget } from "../t
  * Only local files and HTTP: sharing a file between instances behind a load
  * balancer is a mount, not a library concern.
  */
+
+/**
+ * Wraps a reader function into a source class.
+ *
+ * `.source()` takes a class, not a callback, so that nothing in the scheduler
+ * has to work out at runtime what it was handed. This keeps the one-line case
+ * one line without reintroducing that ambiguity.
+ */
+export function Source<Entry = string, Context = unknown>(
+  read: (context: Context) => Promisable<Entry[]>,
+): ClassType<SourceAdapter<Entry, Context>> {
+  return class implements SourceAdapter<Entry, Context> {
+    read(context: Context) {
+      return read(context);
+    }
+  };
+}
 
 /** Drops comments and blank lines. Everything else is a task. */
 function lines(text: string): string[] {
@@ -15,7 +32,7 @@ function lines(text: string): string[] {
     .filter((line) => line.length > 0 && !line.startsWith("#"));
 }
 
-export function FileSource(path: string): new () => SourceAdapter<string, unknown> {
+export function FileSource(path: string): ClassType<SourceAdapter<string, unknown>> {
   return class implements SourceAdapter<string, unknown> {
     async read(): Promise<string[]> {
       const { readFile } = await import("node:fs/promises");
@@ -24,7 +41,7 @@ export function FileSource(path: string): new () => SourceAdapter<string, unknow
   };
 }
 
-export function HttpSource(url: string, init?: RequestInit): new () => SourceAdapter<string, unknown> {
+export function HttpSource(url: string, init?: RequestInit): ClassType<SourceAdapter<string, unknown>> {
   return class implements SourceAdapter<string, unknown> {
     async read(): Promise<string[]> {
       const response = await fetch(url, init);

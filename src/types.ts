@@ -7,11 +7,18 @@
  * working single-instance scheduler.
  */
 
-/** A class constructible with no arguments — what an injector hands around. */
+/**
+ * A class constructible with no arguments.
+ *
+ * The single currency of this package: anything the scheduler builds for you —
+ * a source, a parser, a coordinator, a hook, a handler — arrives as one of
+ * these. Configuration that a constructor would need is captured by a factory
+ * that hands back a class, the way `DiskCache(dir)` and `Source(fn)` do.
+ *
+ * One currency is why there is no `typeof x === "function"` check anywhere in
+ * here: nothing has to work out at runtime what it was given.
+ */
 export type ClassType<Instance = unknown> = new () => Instance;
-
-/** Either a ready instance, or a token to construct. */
-export type Provided<T> = T | ClassType<T>;
 
 export type InjectMap = Record<string, ClassType>;
 
@@ -93,16 +100,15 @@ export interface TaskEvent {
 /**
  * Where task definitions come from. Required.
  *
- * A callback is the simple form; a class with `read` is the same thing with a
- * place to keep state — an open file watcher, a prepared statement.
+ * A class, not a callback — everything the scheduler constructs is a class, so
+ * there is one currency and nothing has to guess at runtime what it was handed.
+ * `Source(fn)` wraps a one-line reader into one, so brevity costs nothing.
  */
 export interface SourceAdapter<Entry = string, Context = unknown> {
   read(context: Context): Promisable<Entry[]>;
 }
 
-export type Source<Entry = string, Context = unknown> =
-  | ((context: Context) => Promisable<Entry[]>)
-  | ClassType<SourceAdapter<Entry, Context>>;
+export type Source<Entry = string, Context = unknown> = ClassType<SourceAdapter<Entry, Context>>;
 
 /**
  * Decides which instance runs a given fire. Optional.

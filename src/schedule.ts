@@ -3,7 +3,7 @@ import { DEFAULT_TIMEOUT, runTarget } from "./runner";
 import { Task, type TaskStatus } from "./task";
 import type {
   ClassType, Coordinator, ErrorHandler, Hook, InjectMap, Injected, NotFoundHandler,
-  Provided, Source, SourceAdapter, TaskDefinition, TaskEvent, TaskParser,
+  Source, TaskDefinition, TaskEvent, TaskParser,
 } from "./types";
 
 /** How often due tasks are checked. One second, because expressions have a seconds field. */
@@ -20,29 +20,13 @@ export type CascadePolicy =
   /** Leave it running. For when the source is not the only authority. */
   | "keep";
 
-function resolve<T>(provided: Provided<T>): T {
-  return typeof provided === "function" ? new (provided as ClassType<T>)() : provided;
-}
-
-/**
- * A class and a plain callback are both `typeof "function"`, so the two cannot
- * be told apart that way. An adapter is recognised by carrying `read` on its
- * prototype, which an arrow function has no way to do.
- */
-function isSourceAdapter<E, C>(source: Source<E, C>): source is ClassType<SourceAdapter<E, C>> {
-  return (
-    typeof source === "function" &&
-    typeof (source as { prototype?: { read?: unknown } }).prototype?.read === "function"
-  );
-}
-
 interface Descriptor<Entry, Context> {
   injects: InjectMap;
   source?: Source<Entry, Context>;
-  parser?: Provided<TaskParser<Entry>>;
+  parser?: ClassType<TaskParser<Entry>>;
   registry: IRegistry<Context>;
-  coordinator?: Provided<Coordinator>;
-  hook?: Provided<Hook>;
+  coordinator?: ClassType<Coordinator>;
+  hook?: ClassType<Hook>;
   retry: number;
   timeout: number;
   syncMs: number;
@@ -101,9 +85,9 @@ export class ScheduleRunner<Entry = string, Context = unknown> {
     for (const [name, Token] of Object.entries(this.d.injects)) context[name] = new Token();
     this.context = context as Injected<Context, InjectMap>;
 
-    this.parser = resolve(this.d.parser);
-    this.coordinator = this.d.coordinator && resolve(this.d.coordinator);
-    this.hook = this.d.hook && resolve(this.d.hook);
+    this.parser = new this.d.parser();
+    this.coordinator = this.d.coordinator && new this.d.coordinator();
+    this.hook = this.d.hook && new this.d.hook();
 
     await this.sync();
 
@@ -133,11 +117,7 @@ export class ScheduleRunner<Entry = string, Context = unknown> {
   /* ------------------------------------------------------------ syncing */
 
   private async read(): Promise<Entry[]> {
-    const source = this.d.source!;
-
-    return isSourceAdapter(source)
-      ? new source().read(this.context as Context)
-      : source(this.context as Context);
+    return new this.d.source!().read(this.context as Context);
   }
 
   /**
@@ -301,10 +281,10 @@ export class ScheduleRunner<Entry = string, Context = unknown> {
 export interface IScheduleBuilder<Entry = string, Context = unknown>
   extends ClassType<ScheduleRunner<Entry, Context>> {
   source<E>(source: Source<E, Context>): IScheduleBuilder<E, Context>;
-  task(parser: Provided<TaskParser<Entry>>): IScheduleBuilder<Entry, Context>;
+  task(parser: ClassType<TaskParser<Entry>>): IScheduleBuilder<Entry, Context>;
   registry(registry: IRegistry<Context>): IScheduleBuilder<Entry, Context>;
-  coordinator(coordinator: Provided<Coordinator>): IScheduleBuilder<Entry, Context>;
-  hook(hook: Provided<Hook>): IScheduleBuilder<Entry, Context>;
+  coordinator(coordinator: ClassType<Coordinator>): IScheduleBuilder<Entry, Context>;
+  hook(hook: ClassType<Hook>): IScheduleBuilder<Entry, Context>;
   retry(times: number): IScheduleBuilder<Entry, Context>;
   timeout(ms: number): IScheduleBuilder<Entry, Context>;
   sync(ms: number): IScheduleBuilder<Entry, Context>;
@@ -326,10 +306,10 @@ function chain<Entry, Context>(d: Descriptor<Entry, Context>): IScheduleBuilder<
     }
 
     static source<E>(source: Source<E, Context>) { return step<E>({ source }); }
-    static task(parser: Provided<TaskParser<Entry>>) { return step<Entry>({ parser }); }
+    static task(parser: ClassType<TaskParser<Entry>>) { return step<Entry>({ parser }); }
     static registry(registry: IRegistry<Context>) { return step<Entry>({ registry }); }
-    static coordinator(coordinator: Provided<Coordinator>) { return step<Entry>({ coordinator }); }
-    static hook(hook: Provided<Hook>) { return step<Entry>({ hook }); }
+    static coordinator(coordinator: ClassType<Coordinator>) { return step<Entry>({ coordinator }); }
+    static hook(hook: ClassType<Hook>) { return step<Entry>({ hook }); }
     static retry(times: number) { return step<Entry>({ retry: times }); }
     static timeout(ms: number) { return step<Entry>({ timeout: ms }); }
     static sync(ms: number) { return step<Entry>({ syncMs: ms }); }
