@@ -29,7 +29,7 @@ interface Descriptor<Entry, Context> {
   hook?: ClassType<Hook>;
   retry: number;
   timeout: number;
-  syncMs: number;
+  syncMs: number | false;
   tickMs: number;
   cascade: CascadePolicy;
   onError?: ErrorHandler;
@@ -92,7 +92,18 @@ export class ScheduleRunner<Entry = string, Context = unknown> {
     await this.sync();
 
     this.tickTimer = setInterval(() => this.tick(), this.d.tickMs);
-    this.syncTimer = setInterval(() => void this.sync(), this.d.syncMs);
+
+    /* `false` means the source is read once, at start, and never reconciled
+       again — right for a task list baked into the deployment, wrong for one an
+       operator edits. The reconcile still happened above, so the tasks are
+       loaded either way. */
+    if (this.d.syncMs !== false) {
+      this.syncTimer = setInterval(() => {
+        this.sync().catch((error) => {
+          console.warn("[schedule] sync failed:", error);
+        });
+      }, this.d.syncMs);
+    }
   }
 
   /** Clears both timers and waits for runs already in flight. */
@@ -135,6 +146,15 @@ export class ScheduleRunner<Entry = string, Context = unknown> {
 
     try {
       entries = await this.read();
+
+      /* A source that answers with something other than a list is a broken
+         source, not an empty schedule. Checked here so it goes down the same
+         path as a failed read — report it, keep the tasks already running —
+         rather than throwing past this try and out of a timer callback. */
+      if (!Array.isArray(entries)) {
+        throw new Error(`source returned ${typeof entries}, expected an array`);
+      }
+
       this.lastSyncOk = true;
     } catch (error) {
       this.lastSyncOk = false;
@@ -287,7 +307,15 @@ export interface IScheduleBuilder<Entry = string, Context = unknown>
   hook(hook: ClassType<Hook>): IScheduleBuilder<Entry, Context>;
   retry(times: number): IScheduleBuilder<Entry, Context>;
   timeout(ms: number): IScheduleBuilder<Entry, Context>;
-  sync(ms: number): IScheduleBuilder<Entry, Context>;
+  /**
+   * Whether, and how often, the source is re-read and reconciled against the
+   * tasks already running: a source entry that is new becomes a task, one that
+   * changed is updated, one that disappeared is handled by `cascade`.
+   *
+   * `false` turns the repeat off — read once at start and never again.
+   * `true` uses the default interval. A number sets it.
+   */
+  sync(every: number | boolean): IScheduleBuilder<Entry, Context>;
   tick(ms: number): IScheduleBuilder<Entry, Context>;
   cascade(policy: CascadePolicy): IScheduleBuilder<Entry, Context>;
   onError(handler: ErrorHandler): IScheduleBuilder<Entry, Context>;
@@ -312,7 +340,10 @@ function chain<Entry, Context>(d: Descriptor<Entry, Context>): IScheduleBuilder<
     static hook(hook: ClassType<Hook>) { return step<Entry>({ hook }); }
     static retry(times: number) { return step<Entry>({ retry: times }); }
     static timeout(ms: number) { return step<Entry>({ timeout: ms }); }
-    static sync(ms: number) { return step<Entry>({ syncMs: ms }); }
+    static sync(every: number | boolean) {
+      const syncMs = every === true ? DEFAULT_SYNC : every;
+      return step<Entry>({ syncMs });
+    }
     static tick(ms: number) { return step<Entry>({ tickMs: ms }); }
     static cascade(policy: CascadePolicy) { return step<Entry>({ cascade: policy }); }
     static onError(handler: ErrorHandler) { return step<Entry>({ onError: handler }); }
