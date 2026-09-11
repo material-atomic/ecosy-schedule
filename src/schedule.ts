@@ -23,10 +23,10 @@ export type CascadePolicy =
 interface Descriptor<Entry, Context> {
   injects: InjectMap;
   source?: Source<Entry, Context>;
-  parser?: ClassType<TaskParser<Entry>>;
+  parser?: ClassType<TaskParser<Entry, Context>>;
   registry: IRegistry<Context>;
-  coordinator?: ClassType<Coordinator>;
-  hook?: ClassType<Hook>;
+  coordinator?: ClassType<Coordinator<Context>>;
+  hook?: ClassType<Hook<Context>>;
   retry: number;
   timeout: number;
   syncMs: number | false;
@@ -56,9 +56,9 @@ export class ScheduleRunner<Entry = string, Context = unknown> {
   private readonly tasks = new Map<string, Task>();
 
   private context!: Injected<Context, InjectMap>;
-  private parser!: TaskParser<Entry>;
-  private coordinator?: Coordinator;
-  private hook?: Hook;
+  private parser!: TaskParser<Entry, Context>;
+  private coordinator?: Coordinator<Context>;
+  private hook?: Hook<Context>;
 
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private syncTimer: ReturnType<typeof setInterval> | null = null;
@@ -172,7 +172,7 @@ export class ScheduleRunner<Entry = string, Context = unknown> {
       let definition: TaskDefinition;
 
       try {
-        definition = this.parser.parse(entry);
+        definition = this.parser.parse(entry, this.context as Context);
       } catch (error) {
         await this.report(`unparseable entry: ${error instanceof Error ? error.message : String(error)}`);
         continue;
@@ -228,7 +228,7 @@ export class ScheduleRunner<Entry = string, Context = unknown> {
     task.running = true;
 
     try {
-      if (this.coordinator && !(await this.coordinator.claim(task.key, scheduledFor))) {
+      if (this.coordinator && !(await this.coordinator.claim(task.key, scheduledFor, this.context as Context))) {
         return; // another instance owns this fire
       }
 
@@ -269,8 +269,8 @@ export class ScheduleRunner<Entry = string, Context = unknown> {
 
       // A hook that throws or hangs must not take the run down with it — the
       // work already happened, and reporting is a separate concern.
-      await this.safely(() => this.hook?.notify(event));
-      await this.safely(() => this.coordinator?.release(task.key, scheduledFor, event));
+      await this.safely(() => this.hook?.notify(event, this.context as Context));
+      await this.safely(() => this.coordinator?.release(task.key, scheduledFor, event, this.context as Context));
     } finally {
       task.running = false;
     }
@@ -302,10 +302,10 @@ export class ScheduleRunner<Entry = string, Context = unknown> {
 export interface IScheduleBuilder<Entry = string, Context = unknown>
   extends ClassType<ScheduleRunner<Entry, Context>> {
   source<E>(source: Source<E, Context>): IScheduleBuilder<E, Context>;
-  task(parser: ClassType<TaskParser<Entry>>): IScheduleBuilder<Entry, Context>;
+  task(parser: ClassType<TaskParser<Entry, Context>>): IScheduleBuilder<Entry, Context>;
   registry(registry: IRegistry<Context>): IScheduleBuilder<Entry, Context>;
-  coordinator(coordinator: ClassType<Coordinator>): IScheduleBuilder<Entry, Context>;
-  hook(hook: ClassType<Hook>): IScheduleBuilder<Entry, Context>;
+  coordinator(coordinator: ClassType<Coordinator<Context>>): IScheduleBuilder<Entry, Context>;
+  hook(hook: ClassType<Hook<Context>>): IScheduleBuilder<Entry, Context>;
   retry(times: number): IScheduleBuilder<Entry, Context>;
   timeout(ms: number): IScheduleBuilder<Entry, Context>;
   /**
@@ -337,10 +337,10 @@ function chain<Entry, Context>(d: Descriptor<Entry, Context>): IScheduleBuilder<
     }
 
     static source<E>(source: Source<E, Context>) { return step<E>({ source }); }
-    static task(parser: ClassType<TaskParser<Entry>>) { return step<Entry>({ parser }); }
+    static task(parser: ClassType<TaskParser<Entry, Context>>) { return step<Entry>({ parser }); }
     static registry(registry: IRegistry<Context>) { return step<Entry>({ registry }); }
-    static coordinator(coordinator: ClassType<Coordinator>) { return step<Entry>({ coordinator }); }
-    static hook(hook: ClassType<Hook>) { return step<Entry>({ hook }); }
+    static coordinator(coordinator: ClassType<Coordinator<Context>>) { return step<Entry>({ coordinator }); }
+    static hook(hook: ClassType<Hook<Context>>) { return step<Entry>({ hook }); }
     static retry(times: number) { return step<Entry>({ retry: times }); }
     static timeout(ms: number) { return step<Entry>({ timeout: ms }); }
     static sync(every: number | boolean) {

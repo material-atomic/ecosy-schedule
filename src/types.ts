@@ -60,9 +60,16 @@ export interface TaskDefinition {
   timeout?: number;
 }
 
-/** Turns one entry from a source into a task. Implement this to accept your own format. */
-export interface TaskParser<Entry = string> {
-  parse(entry: Entry): TaskDefinition;
+/**
+ * Turns one entry from a source into a task. Implement this to accept your own format.
+ *
+ * Every port the scheduler constructs — parser, coordinator, hook — is handed
+ * the injected context as its last argument, the same object a handler's
+ * `run(ctx)` gets. They are classes built with no arguments, so this is how
+ * they reach what `Schedule({ … })` injected.
+ */
+export interface TaskParser<Entry = string, Context = unknown> {
+  parse(entry: Entry, context: Context): TaskDefinition;
 }
 
 /* -------------------------------------------------------------- outcomes */
@@ -122,11 +129,15 @@ export type Source<Entry = string, Context = unknown> = ClassType<SourceAdapter<
  * `(key, scheduledFor)` is a stronger guarantee than a distributed lock, and
  * it leaves a run history behind for free.
  */
-export interface Coordinator {
-  /** True when this instance won the right to run. False when another already has it. */
-  claim(key: string, scheduledFor: Date): Promisable<boolean>;
+export interface Coordinator<Context = unknown> {
+  /**
+   * True when this instance won the right to run. False when another already
+   * has it. `context` carries what was injected — the pool or repository the
+   * claim is written through, typically.
+   */
+  claim(key: string, scheduledFor: Date, context: Context): Promisable<boolean>;
   /** Called once the run ends, so an abandoned claim can be told from a live one. */
-  release(key: string, scheduledFor: Date, event: TaskEvent): Promisable<void>;
+  release(key: string, scheduledFor: Date, event: TaskEvent, context: Context): Promisable<void>;
 }
 
 /**
@@ -136,8 +147,8 @@ export interface Coordinator {
  * One hook, not a list: `combine` turns several into one, so nothing
  * downstream ever branches on how many there are.
  */
-export interface Hook {
-  notify(event: TaskEvent): Promisable<void>;
+export interface Hook<Context = unknown> {
+  notify(event: TaskEvent, context: Context): Promisable<void>;
 }
 
 /**

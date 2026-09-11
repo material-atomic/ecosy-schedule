@@ -83,12 +83,15 @@ const RegistryImpl = function (
 
     run(context: never) {
       // Tokens are constructed here, per run, so a handler never holds a
-      // connection open between fires.
-      const scoped = context as Record<string, unknown>;
+      // connection open between fires — and onto a copy of the scheduler's
+      // context, not the context itself. Written onto the shared object they
+      // outlived the run, showed up in every other handler and in notFound /
+      // onError, and two runs at once overwrote each other's.
+      const scoped: Record<string, unknown> = { ...(context as Record<string, unknown>) };
       for (const [name, Token] of Object.entries(injects)) {
         scoped[name] = new (Token as ClassType)();
       }
-      return handler(context);
+      return handler(scoped as never);
     }
   };
 } as unknown as RegistryFactory;

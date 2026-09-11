@@ -3,6 +3,8 @@ import type { ClassType, Hook as HookPort, Promisable, TaskEvent } from "../type
 /** Milliseconds a hook gets before it is abandoned. Separate from the task's own timeout. */
 const HOOK_TIMEOUT = 10_000;
 
+type LineLogger = { info(...a: unknown[]): void; error(...a: unknown[]): void };
+
 /**
  * Builds a hook class that writes each outcome as a log line.
  *
@@ -11,21 +13,28 @@ const HOOK_TIMEOUT = 10_000;
  * nothing has to be told apart at runtime.
  *
  * Takes anything console-shaped, which `console` itself already is, so it costs
- * no dependency and works before real logging is wired up.
+ * no dependency and works before real logging is wired up — or a function of
+ * the injected context, to write through the logger `Schedule({ … })` injected
+ * instead of one reached around it:
+ *
+ * ```ts
+ * Schedule({ logger: AppLogger }).hook(LoggerHook((ctx) => ctx.logger))
+ * ```
  */
-export function LoggerHook(
-  logger: { info(...a: unknown[]): void; error(...a: unknown[]): void } = console,
-): ClassType<HookPort> {
-  return class implements HookPort {
-    notify(event: TaskEvent) {
+export function LoggerHook<Context = unknown>(
+  logger: LineLogger | ((context: Context) => LineLogger) = console,
+): ClassType<HookPort<Context>> {
+  return class implements HookPort<Context> {
+    notify(event: TaskEvent, context: Context) {
+      const log = typeof logger === "function" ? logger(context) : logger;
       const took = `${event.durationMs}ms`;
 
       if (event.ok) {
-        logger.info(`[schedule] ${event.key} ok in ${took}`);
+        log.info(`[schedule] ${event.key} ok in ${took}`);
         return;
       }
 
-      logger.error(
+      log.error(
         `[schedule] ${event.key} failed (${event.reason}) after ${took}` +
           `${event.attempt > 1 ? ` on attempt ${event.attempt}` : ""}: ${event.detail ?? ""}`,
       );
@@ -77,23 +86,23 @@ interface HookFactory {
    * same. With no arguments it is a valid no-op, which makes it a usable
    * default rather than something callers must guard against.
    */
-  combine(...hooks: ClassType<HookPort>[]): ClassType<HookPort>;
+  combine<Context = unknown>(...hooks: ClassType<HookPort<Context>>[]): ClassType<HookPort<Context>>;
 }
 
 export const Hook: HookFactory = {
-  combine(...hooks: ClassType<HookPort>[]): ClassType<HookPort> {
+  combine<Context = unknown>(...hooks: ClassType<HookPort<Context>>[]): ClassType<HookPort<Context>> {
     const flat = hooks.flatMap(
-      (hook) => (hook as { [PARTS]?: ClassType<HookPort>[] })[PARTS] ?? [hook],
+      (hook) => (hook as { [PARTS]?: ClassType<HookPort<Context>>[] })[PARTS] ?? [hook],
     );
 
-    return class Combined implements HookPort {
+    return class Combined implements HookPort<Context> {
       static readonly [PARTS] = flat;
 
       private readonly parts = flat.map((Hook) => new Hook());
 
-      async notify(event: TaskEvent) {
+      async notify(event: TaskEvent, context: Context) {
         await Promise.all(
-          this.parts.map((hook, i) => deadline(() => hook.notify(event), HOOK_TIMEOUT, `#${i}`)),
+          this.parts.map((hook, i) => deadline(() => hook.notify(event, context), HOOK_TIMEOUT, `#${i}`)),
         );
       }
     };
