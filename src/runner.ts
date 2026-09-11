@@ -36,12 +36,12 @@ function withDeadline<T>(work: Promise<T>, ms: number): Promise<T | typeof TIMED
 
 const TIMED_OUT = Symbol("timed-out");
 
-async function runHandler(
+async function runHandler<Context>(
   task: TaskDefinition,
   registry: IRegistry<unknown>,
-  context: unknown,
+  context: Context,
   timeout: number,
-  notFound?: NotFoundHandler,
+  notFound?: NotFoundHandler<Context>,
 ): Promise<RunOutcome> {
   if (task.target.type !== "handler") return failure("unknown", "not a handler target");
 
@@ -50,7 +50,7 @@ async function runHandler(
   if (!Entry) {
     // Loud, not silent: a row that is enabled but points nowhere would
     // otherwise look like a task that simply never fires.
-    await notFound?.(task.target.key, task);
+    await notFound?.(task.target.key, task, context);
     return failure("unknown", `no handler registered for "${task.target.key}"`);
   }
 
@@ -135,12 +135,12 @@ async function runFile(task: TaskDefinition, timeout: number): Promise<RunOutcom
   });
 }
 
-export function runTarget(
+export function runTarget<Context>(
   task: TaskDefinition,
   registry: IRegistry<unknown>,
-  context: unknown,
+  context: Context,
   timeout = DEFAULT_TIMEOUT,
-  notFound?: NotFoundHandler,
+  notFound?: NotFoundHandler<Context>,
 ): Promise<RunOutcome> {
   switch (task.target.type) {
     case "handler": return runHandler(task, registry, context, timeout, notFound);

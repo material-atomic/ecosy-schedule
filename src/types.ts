@@ -140,8 +140,17 @@ export interface Hook {
   notify(event: TaskEvent): Promisable<void>;
 }
 
-/** Called when a source entry names a handler that was never registered. */
-export type NotFoundHandler = (key: string, task: TaskDefinition) => Promisable<void>;
+/**
+ * Called when a source entry names a handler that was never registered.
+ *
+ * `context` is the same object a handler's `run` receives — the injection map
+ * `Schedule(…)` was built with, constructed. These two callbacks are plain
+ * functions rather than classes, so they cannot inject for themselves, and
+ * without it an app had to reach its logger around the scheduler instead of
+ * through it. Last in the list, so a handler written for two arguments still
+ * fits.
+ */
+export type NotFoundHandler<Context = unknown> = (key: string, task: TaskDefinition, context: Context) => Promisable<void>;
 
-/** Called when a run fails, before any retry decision. */
-export type ErrorHandler = (event: TaskEvent, task: TaskDefinition) => Promisable<void>;
+/** Called when a run fails, before any retry decision. `context` as for {@link NotFoundHandler}. */
+export type ErrorHandler<Context = unknown> = (event: TaskEvent, task: TaskDefinition, context: Context) => Promisable<void>;

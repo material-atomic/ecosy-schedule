@@ -1,6 +1,6 @@
 {
   "name": "@ecosy/schedule",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Cron scheduling with pluggable sources, coordination and reporting — no dependencies, runs anywhere Node does",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -26,7 +26,8 @@
   },
   "license": "MIT",
   "scripts": {
-    "build": "tsc && rollup -c",
+    "build": "tsc && yarn types:test && rollup -c",
+    "types:test": "tsc --noEmit --strict --skipLibCheck --target ES2022 --module esnext --moduleResolution bundler types-test/handlers.ts",
     "prepublishOnly": "yarn clean && yarn build",
     "clean": "rimraf dist"
   },

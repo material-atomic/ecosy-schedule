@@ -32,8 +32,8 @@ interface Descriptor<Entry, Context> {
   syncMs: number | false;
   tickMs: number;
   cascade: CascadePolicy;
-  onError?: ErrorHandler;
-  notFound?: NotFoundHandler;
+  onError?: ErrorHandler<Context>;
+  notFound?: NotFoundHandler<Context>;
 }
 
 export interface ScheduleStatus {
@@ -240,7 +240,7 @@ export class ScheduleRunner<Entry = string, Context = unknown> {
 
       for (let attempt = 1; attempt <= attempts; attempt++) {
         const startedAt = new Date();
-        const outcome = await runTarget(definition, this.d.registry, this.context, timeout, this.d.notFound);
+        const outcome = await runTarget(definition, this.d.registry as IRegistry<unknown>, this.context as Context, timeout, this.d.notFound);
 
         event = {
           key: task.key,
@@ -256,7 +256,7 @@ export class ScheduleRunner<Entry = string, Context = unknown> {
 
         if (outcome.ok) break;
 
-        await this.d.onError?.(event, definition);
+        await this.d.onError?.(event, definition, this.context as Context);
 
         // Backoff between attempts: retrying a failing endpoint three times in
         // the same millisecond is three failures, not three chances.
@@ -291,6 +291,7 @@ export class ScheduleRunner<Entry = string, Context = unknown> {
       this.d.onError?.(
         { key: "@schedule", scheduledFor: new Date(), startedAt: new Date(), durationMs: 0, attempt: 1, ok: false, reason: "unknown", detail },
         { key: "@schedule", expression: "", target: { type: "handler", key: "@schedule" } },
+        this.context as Context,
       ),
     );
   }
@@ -318,8 +319,10 @@ export interface IScheduleBuilder<Entry = string, Context = unknown>
   sync(every: number | boolean): IScheduleBuilder<Entry, Context>;
   tick(ms: number): IScheduleBuilder<Entry, Context>;
   cascade(policy: CascadePolicy): IScheduleBuilder<Entry, Context>;
-  onError(handler: ErrorHandler): IScheduleBuilder<Entry, Context>;
-  notFound(handler: NotFoundHandler): IScheduleBuilder<Entry, Context>;
+  /** `handler` gets the injected context as its third argument, as a registry handler does. */
+  onError(handler: ErrorHandler<Context>): IScheduleBuilder<Entry, Context>;
+  /** `handler` gets the injected context as its third argument, as a registry handler does. */
+  notFound(handler: NotFoundHandler<Context>): IScheduleBuilder<Entry, Context>;
 }
 
 function chain<Entry, Context>(d: Descriptor<Entry, Context>): IScheduleBuilder<Entry, Context> {
@@ -346,8 +349,8 @@ function chain<Entry, Context>(d: Descriptor<Entry, Context>): IScheduleBuilder<
     }
     static tick(ms: number) { return step<Entry>({ tickMs: ms }); }
     static cascade(policy: CascadePolicy) { return step<Entry>({ cascade: policy }); }
-    static onError(handler: ErrorHandler) { return step<Entry>({ onError: handler }); }
-    static notFound(handler: NotFoundHandler) { return step<Entry>({ notFound: handler }); }
+    static onError(handler: ErrorHandler<Context>) { return step<Entry>({ onError: handler }); }
+    static notFound(handler: NotFoundHandler<Context>) { return step<Entry>({ notFound: handler }); }
   } as unknown as IScheduleBuilder<Entry, Context>;
 }
 
