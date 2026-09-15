@@ -1,6 +1,6 @@
 {
   "name": "@ecosy/schedule",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Cron scheduling with pluggable sources, coordination and reporting — no dependencies, runs anywhere Node does",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,6 +11,7 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     },
+    "./package.json": "./package.json",
     "./source": {
       "source": "./src/source/index.ts",
       "types": "./dist/source/index.d.ts",
